@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+/// Current application version displayed on the start page.
+const String appVersion = '0.1';
 
 void main() => runApp(const MyApp());
 
@@ -79,6 +81,8 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: const TextStyle(fontSize: 25),
             ),
+            const SizedBox(height: 20),
+            Text('Version: $appVersion'),
           ],
         ),
       ),
