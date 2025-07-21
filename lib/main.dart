@@ -1,95 +1,155 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-/// Current application version displayed on the start page.
-const String appVersion = '0.1';
+import 'package:http/http.dart' as http;
+import 'package:yaml/yaml.dart';
 
 void main() => runApp(const MyApp());
 
+/// Simple logger that prints to console and sends logs to Betterstack.
+class BetterstackLogger {
+  static const _endpoint = 'https://s1446505.eu-nbg-2.betterstackdata.com/';
+  static const _token = 'Bearer UqA2gTDAPEMcyUbqH1RjC98n';
+
+  static Future<void> log(String message) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final body = jsonEncode({'dt': now, 'message': message});
+    // Log to console
+    // ignore: avoid_print
+    print(message);
+    try {
+      await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Authorization': _token,
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('Failed to send log: $e');
+    }
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-  static const String _title = 'Flutter Stateful Clicker Counter';
-  // This widget is the root of your application.
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: _title,
-      theme: ThemeData(
-        // useMaterial3: false,
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(),
+      title: 'MemoZeit',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const ReminderPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-  // This class is the configuration for the state.
-  @override
-  _MyHomePageState createState() => _MyHomePageState();
+class Reminder {
+  final String time;
+  final String label;
+  final String details;
+
+  const Reminder({required this.time, required this.label, required this.details});
+
+  factory Reminder.fromMap(Map<dynamic, dynamic> map) {
+    return Reminder(
+      time: map['time']?.toString() ?? '',
+      label: map['label']?.toString() ?? '',
+      details: map['details']?.toString() ?? '',
+    );
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class ReminderPage extends StatefulWidget {
+  const ReminderPage({super.key});
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  @override
+  State<ReminderPage> createState() => _ReminderPageState();
+}
+
+class _ReminderPageState extends State<ReminderPage> {
+  static const String dataUrl = 'https://gist.githubusercontent.com/pemo11/34ec46434137767df19657ec3c701fa7/raw/8b0da969e97f0163add0bf3bfcdc197aa74d5e43/memozeit1.yaml';
+
+  List<Reminder> reminders = [];
+  String name = '';
+  String date = '';
+  String? selectedDetails;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    BetterstackLogger.log('App started');
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final response = await http.get(Uri.parse(dataUrl));
+      if (response.statusCode == 200) {
+        final yamlData = loadYaml(response.body);
+        setState(() {
+          name = yamlData['name']?.toString() ?? '';
+          date = yamlData['date']?.toString() ?? '';
+          final list = yamlData['reminders'] as YamlList?;
+          reminders = list?.map((e) => Reminder.fromMap(Map<String, dynamic>.from(e))).toList() ?? [];
+          loading = false;
+        });
+        BetterstackLogger.log('Loaded reminders successfully');
+      } else {
+        BetterstackLogger.log('Failed to fetch data: status ${response.statusCode}');
+        setState(() => loading = false);
+      }
+    } catch (e) {
+      BetterstackLogger.log('Error loading data: $e');
+      setState(() => loading = false);
+    }
+  }
+
+  void _selectReminder(Reminder reminder) {
+    setState(() => selectedDetails = reminder.details);
+    BetterstackLogger.log('Selected reminder: ${reminder.label}');
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: const Text('Flutter Demo Click Counter'),
+        title: const Text('MemoZeit'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: const TextStyle(fontSize: 25),
-            ),
-            const SizedBox(height: 20),
-            Text('Version: $appVersion'),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Erinnerungen für den $date',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  Text('Erinnerungen für $name',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: reminders.length,
+                      itemBuilder: (context, index) {
+                        final r = reminders[index];
+                        return ListTile(
+                          leading: Text(r.time),
+                          title: Text(r.label),
+                          onTap: () => _selectReminder(r),
+                        );
+                      },
+                    ),
+                  ),
+                  if (selectedDetails != null) ...[
+                    const Divider(),
+                    Text(selectedDetails!),
+                  ],
+                ],
+              ),
       ),
     );
   }
